@@ -1,0 +1,45 @@
+package main
+
+import (
+    "fmt"
+)
+
+func main() {
+    // Create channels for communication
+    nums := make(chan int)
+    square := make(chan int)
+    cube := make(chan int)
+
+    // Generator goroutine
+    go generateNumbers(nums)
+
+    // Consumer goroutines
+    go squareNumbers(nums, square)
+    go cubeNumbers(nums, cube)
+
+    // Print results
+    for i := 0; i < 10; i++ {
+        fmt.Printf("Number: %d, Square: %d, Cube: %d\n", <-square, <-cube, i+1)
+    }
+}
+
+func generateNumbers(nums chan<- int) {
+    for i := 1; i <= 10; i++ {
+        nums <- i
+    }
+    close(nums)
+}
+
+func squareNumbers(nums <-chan int, square chan<- int) {
+    for num := range nums {
+        square <- num * num
+    }
+    close(square)
+}
+
+func cubeNumbers(nums <-chan int, cube chan<- int) {
+    for num := range nums {
+        cube <- num * num * num
+    }
+    close(cube)
+}
