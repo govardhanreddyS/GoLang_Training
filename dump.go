@@ -1,55 +1,62 @@
 package main
 
 import (
-	"fmt"
-	"time"
+    "fmt"
+    "sync"
+    "time"
 )
 
-func goroutineA(ch chan bool, quit chan struct{}) {
-	for {
-		select {
-		case <-ch:
-			fmt.Println("Goroutine A is triggered")
-		case <-quit:
-			fmt.Println("Goroutine A is stopping")
-			return
-		}
-	}
+func routine(id int, wg *sync.WaitGroup, ch chan string, pauseCh <-chan bool) {
+    defer wg.Done()
+    for {
+        select {
+        case <-pauseCh:
+            fmt.Printf("Routine %d paused\n", id)
+            <-pauseCh // Wait for unpause signal
+            fmt.Printf("Routine %d resumed\n", id)
+        default:
+            fmt.Printf("Routine %d running\n", id)
+            // Simulate some work
+            time.Sleep(time.Second*20)
+            ch <- fmt.Sprintf("Routine %d completed", id)
+        }
+    }
 }
 
-func goroutineB(ch chan bool, quit chan struct{}) {
-	for {
-		select {
-		case <-ch:
-			fmt.Println("Goroutine B is triggered")
-		case <-quit:
-			fmt.Println("Goroutine B is stopping")
-			return
-		}
-	}
-}
 func main() {
-	trigger := make(chan bool)
-	quit := make(chan struct{})
+    numRoutines := 3
+    ch := make(chan string, numRoutines)
+    pauseCh := make(chan bool)
 
-	go goroutineA(trigger, quit)
-	go goroutineB(trigger, quit)
+    var wg sync.WaitGroup
+    wg.Add(numRoutines)
 
-	// Simulating conditions to trigger different goroutines
-	go func() {
-		for {
-			time.Sleep(2 * time.Second)
-			trigger <- true // Trigger goroutine A
-			time.Sleep(3 * time.Second)
-			trigger <- true // Trigger goroutine B
-		}
-	}()
+    // Start routines
+    for i := 1; i <= numRoutines; i++ {
+        go routine(i, &wg, ch, pauseCh)
+    }
 
-	// Stop the goroutines after a certain period
-	time.Sleep(15 * time.Second)
-	close(quit)
+    // Control loop
+    for {
+        // Round-robin scheduling
+        select {
+        case result := <-ch:
+            fmt.Println(result)
+        case <-time.After(5 * time.Second):
+            // Pause all routines for 2 seconds
+            fmt.Println("Pausing all routines...")
+            for i := 0; i < numRoutines; i++ {
+                pauseCh <- true
+            }
+            time.Sleep(3 * time.Second)
+            // Resume all routines
+            fmt.Println("Resuming all routines...")
+            for i := 0; i < numRoutines; i++ {
+                pauseCh <- false
+            }
+        }
+    }
 
-	// Keep the main goroutine alive for a while to observe the output
-	time.Sleep(2 * time.Second)
+    // Wait for routines to finish (which will never happen in this example)
+    wg.Wait()
 }
-
