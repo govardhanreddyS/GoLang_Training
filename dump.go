@@ -1,55 +1,47 @@
 package main
 
 import (
-    "fmt"
-    "sync"
+	"fmt"
+	"math/rand"
+	//"time"
 )
 
-type Button struct {
-    Clicked *sync.Cond
+// gen generates random numbers and sends them to the returned channel
+func gen() <-chan int {
+	out := make(chan int)
+	go func() {
+		defer close(out)
+		for {
+			out <- rand.Intn(100)
+		}
+	}()
+	return out
+}
+
+// fanIn combines multiple input channels into a single channel
+func fanIn(inputs ...<-chan int) <-chan int {
+	out := make(chan int)
+	for _, in := range inputs {
+		go func(ch <-chan int) {
+			for n := range ch {
+				out <- n
+			}
+		}(in)
+	}
+	return out
 }
 
 func main() {
-    button := Button{
-        Clicked: sync.NewCond(&sync.Mutex{}),
-    }
+	// Create input channels
+	ch1 := gen()
+	ch2 := gen()
+	ch3 := gen()
 
-    // running on goroutine every function that passed/registered
-    // and wait, not exit until that goroutine is confirmed to be running
-    subscribe := func(c *sync.Cond, param string, fn func(s string)) {
-        var goroutineRunning sync.WaitGroup
-        goroutineRunning.Add(1)
+	// Combine input channels into a single channel
+	fanInCh := fanIn(ch1, ch2, ch3)
 
-        go func(p string) {
-            goroutineRunning.Done()
-            c.L.Lock() // critical section
-            defer c.L.Unlock()
-
-            // fmt.Println("Registered and wait ... ")
-            c.Wait()
-
-            fn(p)
-        }(param)
-
-        goroutineRunning.Wait()
-    }
-
-    var clickRegistered sync.WaitGroup
-
-	for _, v := range []string{
-        "Maximizing window.",
-        "Displaying annoying dialog box!",
-        "Mouse clicked."} {
-
-        clickRegistered.Add(1)
-
-        subscribe(button.Clicked, v, func(s string) {
-            fmt.Println(s)
-            clickRegistered.Done()
-        })
-    }
-
-    button.Clicked.Broadcast()
-
-    clickRegistered.Wait()
+	// Read values from the combined channel
+	for i := 0; i < 10; i++ {
+		fmt.Println(<-fanInCh)
+	}
 }
