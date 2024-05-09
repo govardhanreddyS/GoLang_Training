@@ -3,60 +3,53 @@ package main
 import (
     "fmt"
     "sync"
-    "time"
 )
 
-func routine(id int, wg *sync.WaitGroup, ch chan string, pauseCh <-chan bool) {
-    defer wg.Done()
-    for {
-        select {
-        case <-pauseCh:
-            fmt.Printf("Routine %d paused\n", id)
-            <-pauseCh // Wait for unpause signal
-            fmt.Printf("Routine %d resumed\n", id)
-        default:
-            fmt.Printf("Routine %d running\n", id)
-            // Simulate some work
-            time.Sleep(time.Second*20)
-            ch <- fmt.Sprintf("Routine %d completed", id)
-        }
-    }
+type Button struct {
+    Clicked *sync.Cond
 }
 
 func main() {
-    numRoutines := 3
-    ch := make(chan string, numRoutines)
-    pauseCh := make(chan bool)
-
-    var wg sync.WaitGroup
-    wg.Add(numRoutines)
-
-    // Start routines
-    for i := 1; i <= numRoutines; i++ {
-        go routine(i, &wg, ch, pauseCh)
+    button := Button{
+        Clicked: sync.NewCond(&sync.Mutex{}),
     }
 
-    // Control loop
-    for {
-        // Round-robin scheduling
-        select {
-        case result := <-ch:
-            fmt.Println(result)
-        case <-time.After(5 * time.Second):
-            // Pause all routines for 2 seconds
-            fmt.Println("Pausing all routines...")
-            for i := 0; i < numRoutines; i++ {
-                pauseCh <- true
-            }
-            time.Sleep(3 * time.Second)
-            // Resume all routines
-            fmt.Println("Resuming all routines...")
-            for i := 0; i < numRoutines; i++ {
-                pauseCh <- false
-            }
-        }
+    // running on goroutine every function that passed/registered
+    // and wait, not exit until that goroutine is confirmed to be running
+    subscribe := func(c *sync.Cond, param string, fn func(s string)) {
+        var goroutineRunning sync.WaitGroup
+        goroutineRunning.Add(1)
+
+        go func(p string) {
+            goroutineRunning.Done()
+            c.L.Lock() // critical section
+            defer c.L.Unlock()
+
+            // fmt.Println("Registered and wait ... ")
+            c.Wait()
+
+            fn(p)
+        }(param)
+
+        goroutineRunning.Wait()
     }
 
-    // Wait for routines to finish (which will never happen in this example)
-    wg.Wait()
+    var clickRegistered sync.WaitGroup
+
+	for _, v := range []string{
+        "Maximizing window.",
+        "Displaying annoying dialog box!",
+        "Mouse clicked."} {
+
+        clickRegistered.Add(1)
+
+        subscribe(button.Clicked, v, func(s string) {
+            fmt.Println(s)
+            clickRegistered.Done()
+        })
+    }
+
+    button.Clicked.Broadcast()
+
+    clickRegistered.Wait()
 }
