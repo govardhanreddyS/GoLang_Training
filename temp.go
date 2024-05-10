@@ -1,103 +1,57 @@
 package main
-
+/*
+Worker Pool with Structured Task Data:
+In this example, we'll create a worker pool to process structured task data
+ concurrently. Imagine a scenario where you have a large set of tasks to 
+ execute, and each task is represented by a structured data type.
+*/
 import (
-	"fmt"
-	"sync"
-	"time"
+    "fmt"
+    "sync"
 )
 
-type Item struct {
-	ID            int
-	Name          string
-	PackingEffort time.Duration
-}
-
-func PrepareItems(done <-chan bool) <-chan Item {
-	items := make(chan Item)
-	itemsToShip := []Item{
-		Item{0, "Shirt", 1 * time.Second},
-		Item{1, "Legos", 1 * time.Second},
-		Item{2, "TV", 5 * time.Second},
-		Item{3, "Bananas", 2 * time.Second},
-		Item{4, "Hat", 1 * time.Second},
-		Item{5, "Phone", 2 * time.Second},
-		Item{6, "Plates", 3 * time.Second},
-		Item{7, "Computer", 5 * time.Second},
-		Item{8, "Pint Glass", 3 * time.Second},
-		Item{9, "Watch", 2 * time.Second},
-	}
-	go func() {
-		for _, item := range itemsToShip {
-			select {
-			case <-done:
-				return
-			case items <- item:
-			}
-		}
-		close(items)
-	}()
-	return items
-}
-
-func PackItems(done <-chan bool, items <-chan Item, workerID int) <-chan int {
-	packages := make(chan int)
-	go func() {
-		for item := range items {
-			select {
-			case <-done:
-				return
-			case packages <- item.ID:
-				time.Sleep(item.PackingEffort)
-				fmt.Printf("Worker #%d: Shipping package no. %d, took %ds to pack\n", workerID, item.ID, item.PackingEffort/time.Second)
-			}
-		}
-		close(packages)
-	}()
-	return packages
-}
-
-func merge(done <-chan bool, channels ...<-chan int) <-chan int {
-	var wg sync.WaitGroup
-
-	wg.Add(len(channels))
-	outgoingPackages := make(chan int)
-	multiplex := func(c <-chan int) {
-		defer wg.Done()
-		for i := range c {
-			select {
-			case <-done:
-				return
-			case outgoingPackages <- i:
-			}
-		}
-	}
-	for _, c := range channels {
-		go multiplex(c)
-	}
-	go func() {
-		wg.Wait()
-		close(outgoingPackages)
-	}()
-	return outgoingPackages
+// Task represents a structured task data
+type Task struct {
+    ID   int
+    Data string
 }
 
 func main() {
-	done := make(chan bool)
-	defer close(done)
+    tasks := make(chan Task, 100) // Buffered channel for tasks
+    results := make(chan Task, 100)
+    var wg sync.WaitGroup
 
-	start := time.Now()
+    // Worker function to process tasks
+    worker := func(id int, tasks <-chan Task, results chan<- Task) {
+        defer wg.Done()
+        for task := range tasks {
+            // Process the task
+            task.Data = fmt.Sprintf("Processed: %s", task.Data)
+            results <- task
+        }
+    }
 
-	items := PrepareItems(done)
+    // Spawn worker goroutines
+    numWorkers := 5
+    for i := 1; i <= numWorkers; i++ {
+        wg.Add(1)
+        go worker(i, tasks, results)
+    }
 
-	workers := make([]<-chan int, 4)
-	for i := 0; i < 4; i++ {
-		workers[i] = PackItems(done, items, i)
-	}
+    // Generate tasks
+    for i := 1; i <= 20; i++ {
+        tasks <- Task{ID: i, Data: fmt.Sprintf("Task %d", i)}
+    }
+    close(tasks)
 
-	numPackages := 0
-	for range merge(done, workers...) {
-		numPackages++
-	}
+    // Collect results
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
 
-	fmt.Printf("Took %fs to ship %d packages\n", time.Since(start).Seconds(), numPackages)
+    // Print results
+    for result := range results {
+        fmt.Println(result.Data)
+    }
 }
