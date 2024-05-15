@@ -1,0 +1,8 @@
+1)Compile the Go program: If you haven't done so already, you need to compile the Go program into an executable. You can do this by running the go build command followed by the name of the Go file. For example:
+
+2)go  build memory_profile_example.go
+This command will generate an executable file named memory_profile_demo in the same directory.
+Run the program: Once the executable is generated, you can run it directly:
+./memory_profile_example
+
+3)go tool pprof .\memory_profile.example .\memory_profile.prof
