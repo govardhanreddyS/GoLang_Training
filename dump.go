@@ -5,59 +5,72 @@ import (
     "testing"
 )
 
-// Define a task function that simulates some computational work.
-func doWork() {
-    // Simulate some work by looping for a large number of iterations.
-    for i := 0; i < 1000000; i++ {
-        // Do some computation.
+const numWorkers = 100
+const numJobs = 100000
+
+func BenchmarkMutexLock(b *testing.B) {
+    jobs := make(chan int, numJobs)
+    results := make(chan int, numJobs)
+    var wg sync.WaitGroup
+    var mu sync.Mutex
+
+    for w := 1; w <= numWorkers; w++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for j := range jobs {
+                // Simulate some work
+                result := j * 2
+
+                // Use mutex lock to protect shared resource (results)
+                mu.Lock()
+                results <- result
+                mu.Unlock()
+            }
+        }()
     }
+
+    for j := 1; j <= numJobs; j++ {
+        jobs <- j
+    }
+    close(jobs)
+
+    wg.Wait()
+
+    close(results)
 }
 
-// BenchmarkChannelConcurrency benchmarks the performance of using channels for concurrency.
-func BenchmarkChannelConcurrency(b *testing.B) {
-    // Start the benchmarking loop.
-    for i := 0; i < b.N; i++ {
-        // Create a channel to coordinate goroutines.
-        ch := make(chan struct{})
+func BenchmarkOptimizedChannel(b *testing.B) {
+    jobs := make(chan int, numJobs)
+    results := make(chan int, numJobs)
+    var wg sync.WaitGroup
 
-        // Spawn multiple goroutines to perform the task concurrently.
-        for j := 0; j < 10; j++ {
-            go func() {
-                // Perform the task.
-                doWork()
-                // Signal completion to the channel.
-                ch <- struct{}{}
-            }()
-        }
+    for w := 1; w <= numWorkers; w++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for {
+                select {
+                case j, ok := <-jobs:
+                    if !ok {
+                        return
+                    }
+                    // Simulate some work
+                    result := j * 2
 
-        // Wait for all goroutines to finish by receiving from the channel.
-        for j := 0; j < 10; j++ {
-            <-ch
-        }
+                    // Send result to results channel
+                    results <- result
+                }
+            }
+        }()
     }
-}
 
-// BenchmarkWaitGroupConcurrency benchmarks the performance of using wait groups for concurrency.
-func BenchmarkWaitGroupConcurrency(b *testing.B) {
-    // Start the benchmarking loop.
-    for i := 0; i < b.N; i++ {
-        // Create a wait group to wait for goroutines to finish.
-        var wg sync.WaitGroup
-
-        // Add the number of goroutines to the wait group.
-        wg.Add(10)
-
-        // Spawn multiple goroutines to perform the task concurrently.
-        for j := 0; j < 10; j++ {
-            go func() {
-                // Perform the task.
-                doWork()
-                // Notify the wait group that this goroutine has finished.
-                wg.Done()
-            }()
-        }
-
-        // Wait for all goroutines to finish by calling Wait on the wait group.
-        wg.Wait()
+    for j := 1; j <= numJobs; j++ {
+        jobs <- j
     }
+    close(jobs)
+
+    wg.Wait()
+
+    close(results)
 }
