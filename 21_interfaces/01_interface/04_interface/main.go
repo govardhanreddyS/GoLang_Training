@@ -9,6 +9,10 @@ type circle struct {
 	radius float64
 }
 
+type rectangle struct {
+	area() float64
+}
+
 type square struct {
 	side float64
 }
@@ -18,6 +22,10 @@ type shape interface {
 }
 
 func (c circle) area() float64 {
+	return math.Pi * c.radius * c.radius
+}
+
+func (c rectangle) area() float64 {
 	return math.Pi * c.radius * c.radius
 }
 
